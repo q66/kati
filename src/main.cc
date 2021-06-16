@@ -33,9 +33,7 @@
 #include "flags.h"
 #include "func.h"
 #include "log.h"
-#include "ninja.h"
 #include "parser.h"
-#include "regen.h"
 #include "stats.h"
 #include "stmt.h"
 #include "string_piece.h"
@@ -96,13 +94,8 @@ static void ReadBootstrapMakefile(const vector<Symbol>& targets,
         // TODO: Add more builtin rules.
     );
   }
-  if (g_flags.generate_ninja) {
-    bootstrap += StringPrintf("MAKE?=make -j%d\n",
-                              g_flags.num_jobs <= 1 ? 1 : g_flags.num_jobs / 2);
-  } else {
-    bootstrap += StringPrintf("MAKE?=%s\n",
-                              JoinStrings(g_flags.subkati_args, " ").c_str());
-  }
+  bootstrap += StringPrintf("MAKE?=%s\n",
+                            JoinStrings(g_flags.subkati_args, " ").c_str());
   bootstrap +=
       StringPrintf("MAKECMDGOALS?=%s\n", JoinSymbols(targets, " ").c_str());
 
@@ -221,23 +214,7 @@ SegfaultHandler::~SegfaultHandler() {
 }
 
 static int Run(const vector<Symbol>& targets,
-               const vector<StringPiece>& cl_vars,
-               const string& orig_args) {
-  double start_time = GetTime();
-
-  if (g_flags.generate_ninja && (g_flags.regen || g_flags.dump_kati_stamp)) {
-    ScopedTimeReporter tr("regen check time");
-    if (!NeedsRegen(start_time, orig_args)) {
-      fprintf(stderr, "No need to regenerate ninja file\n");
-      return 0;
-    }
-    if (g_flags.dump_kati_stamp) {
-      printf("Need to regenerate ninja file\n");
-      return 0;
-    }
-    ClearGlobCache();
-  }
-
+               const vector<StringPiece>& cl_vars) {
   SetAffinityForSingleThread();
 
   MakefileCacheManager* cache_mgr = NewMakefileCacheManager();
@@ -311,15 +288,6 @@ static int Run(const vector<Symbol>& targets,
   if (g_flags.is_syntax_check_only)
     return 0;
 
-  if (g_flags.generate_ninja) {
-    ScopedFrame frame(ev->Enter(FrameType::PHASE, "*ninja generation*", Loc()));
-    ScopedTimeReporter tr("generate ninja time");
-    GenerateNinja(nodes, ev.get(), orig_args, start_time);
-    ev->DumpStackStats();
-    ev->Finish();
-    return 0;
-  }
-
   for (const auto& p : ev->exports()) {
     const Symbol name = p.first;
     if (p.second) {
@@ -377,12 +345,6 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   Init();
-  string orig_args;
-  for (int i = 0; i < argc; i++) {
-    if (i)
-      orig_args += ' ';
-    orig_args += argv[i];
-  }
   g_flags.Parse(argc, argv);
   if (g_flags.working_dir) {
     int ret = chdir(g_flags.working_dir);
@@ -395,7 +357,7 @@ int main(int argc, char* argv[]) {
   // This depends on command line flags.
   if (g_flags.use_find_emulator)
     InitFindEmulator();
-  int r = Run(g_flags.targets, g_flags.cl_vars, orig_args);
+  int r = Run(g_flags.targets, g_flags.cl_vars);
   Quit();
   return r;
 }
