@@ -93,7 +93,7 @@ int RunCommand(const string& shell,
       if (result < 0)
         PERROR("waitpid failed");
 
-      while (true) {
+      if (s) while (true) {
         char buf[4096];
         ssize_t r = HANDLE_EINTR(read(pipefd[0], buf, 4096));
         if (r < 0)
@@ -121,8 +121,10 @@ int RunCommand(const string& shell,
         PERROR("dup2 failed");
       close(fd);
     }
-    if (dup2(pipefd[1], 1) < 0)
-      PERROR("dup2 failed");
+    if (s) {
+      if (dup2(pipefd[1], 1) < 0)
+        PERROR("dup2 failed");
+    }
     close(pipefd[1]);
 
     execvp(argv[0], const_cast<char**>(argv));
